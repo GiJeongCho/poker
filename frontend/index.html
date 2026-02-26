@@ -1,0 +1,355 @@
+ㅋ<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>텍사스 홀덤 포커 (8인용)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.1/socket.io.js"></script>
+    <style>
+        body { font-family: 'Apple SD Gothic Neo', sans-serif; background-color: #2c3e50; color: white; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
+        /* Lobby */
+        #lobby { text-align: center; margin-top: 100px; }
+        input, button { padding: 10px; margin: 5px; font-size: 16px; border-radius: 5px; border: none; }
+        button { background-color: #e74c3c; color: white; cursor: pointer; }
+        button:hover { background-color: #c0392b; }
+        input { color: #333; }
+
+        /* Game Room */
+        #game-room { display: none; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        
+        /* Table Layout */
+        .poker-table {
+            background-color: #27ae60;
+            border: 10px solid #2ecc71;
+            border-radius: 100px;
+            height: 600px;
+            position: relative;
+            margin: 20px auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .community-cards {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            gap: 10px;
+        }
+
+        .pot-display {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            font-weight: bold;
+            color: #f1c40f;
+            background: rgba(0,0,0,0.5);
+            padding: 5px 15px;
+            border-radius: 20px;
+        }
+
+        /* Card Styles */
+        .card {
+            width: 60px;
+            height: 90px;
+            background: white;
+            border-radius: 5px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: black;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+        }
+        .card.red { color: #c0392b; }
+        .card.black { color: #2c3e50; }
+        .card-back { background: #34495e; border: 2px solid white; }
+
+        /* Player Positions (8 players) */
+        .player {
+            position: absolute;
+            width: 120px;
+            text-align: center;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 10px;
+        }
+        .player.active { border: 2px solid #f1c40f; }
+        .player-hand { display: flex; justify-content: center; gap: 5px; margin-top: 5px; }
+        
+        /* Positioning 8 players around an ellipse roughly */
+        .p1 { bottom: 10px; left: 50%; transform: translateX(-50%); } /* My seat */
+        .p2 { bottom: 60px; left: 15%; }
+        .p3 { top: 40%; left: 10px; transform: translateY(-50%); }
+        .p4 { top: 60px; left: 15%; }
+        .p5 { top: 10px; left: 50%; transform: translateX(-50%); }
+        .p6 { top: 60px; right: 15%; }
+        .p7 { top: 40%; right: 10px; transform: translateY(-50%); }
+        .p8 { bottom: 60px; right: 15%; }
+
+        /* Controls */
+        .controls { text-align: center; margin-top: 20px; }
+        .log-box {
+            background: rgba(0,0,0,0.5);
+            height: 150px;
+            overflow-y: auto;
+            padding: 10px;
+            margin-top: 20px;
+            text-align: left;
+            border-radius: 5px;
+        }
+
+        /* Genealogy (Jokbo) Modal */
+        #jokbo-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #34495e;
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 1000;
+            width: 80%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            border: 2px solid #f1c40f;
+        }
+        .jokbo-item { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #7f8c8d; }
+        .jokbo-title { font-weight: bold; color: #f1c40f; }
+        .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 999; }
+
+    </style>
+</head>
+<body>
+
+    <div class="container" id="lobby">
+        <h1>♠️ 8인 포커 (텍사스 홀덤)</h1>
+        <div>
+            <input type="text" id="nickname" placeholder="닉네임 입력">
+            <button onclick="createRoom()">방 만들기</button>
+        </div>
+        <br>
+        <div>
+            <input type="text" id="room-code" placeholder="방 코드 입력">
+            <button onclick="joinRoom()">참가하기</button>
+        </div>
+    </div>
+
+    <div class="container" id="game-room">
+        <div class="header">
+            <div id="room-info">Room: <span id="current-room-id"></span></div>
+            <div>
+                <button onclick="toggleJokbo()">📜 족보 보기</button>
+                <button id="start-btn" onclick="startGame()" style="display:none;">게임 시작</button>
+                <button id="next-btn" onclick="nextPhase()" style="display:none; background-color: #3498db;">다음 단계 (관리자)</button>
+            </div>
+        </div>
+
+        <div class="poker-table">
+            <div class="pot-display">Pot: <span id="pot-amount">0</span></div>
+            <div class="community-cards" id="community-cards">
+                <!-- Cards will go here -->
+            </div>
+            
+            <!-- Players will be injected here via JS -->
+            <div id="players-area"></div>
+        </div>
+
+        <div class="controls">
+            <!-- Betting controls (simplified) -->
+            <!-- For now, automated game flow mostly, just Next Phase for manual progression -->
+        </div>
+
+        <div class="log-box" id="game-logs"></div>
+    </div>
+
+    <!-- Jokbo Modal -->
+    <div class="overlay" id="overlay" onclick="toggleJokbo()"></div>
+    <div id="jokbo-modal">
+        <h2 style="text-align: center;">포커 족보 (높은 순)</h2>
+        <div class="jokbo-item">
+            <span class="jokbo-title">로얄 플러쉬 (Royal Flush)</span>
+            <span>같은 무늬의 A, K, Q, J, 10</span>
+        </div>
+        <div class="jokbo-item">
+            <span class="jokbo-title">스트레이트 플러쉬 (Straight Flush)</span>
+            <span>같은 무늬의 연속된 5장</span>
+        </div>
+        <div class="jokbo-item">
+            <span class="jokbo-title">포카드 (Four of a Kind)</span>
+            <span>같은 숫자의 카드 4장</span>
+        </div>
+        <div class="jokbo-item">
+            <span class="jokbo-title">풀 하우스 (Full House)</span>
+            <span>트리플(3장) + 원페어(2장)</span>
+        </div>
+        <div class="jokbo-item">
+            <span class="jokbo-title">플러쉬 (Flush)</span>
+            <span>무늬가 같은 카드 5장</span>
+        </div>
+        <div class="jokbo-item">
+            <span class="jokbo-title">스트레이트 (Straight)</span>
+            <span>연속된 숫자의 카드 5장</span>
+        </div>
+        <div class="jokbo-item">
+            <span class="jokbo-title">트리플 (Three of a Kind)</span>
+            <span>같은 숫자의 카드 3장</span>
+        </div>
+        <div class="jokbo-item">
+            <span class="jokbo-title">투 페어 (Two Pair)</span>
+            <span>같은 숫자의 쌍이 2개</span>
+        </div>
+        <div class="jokbo-item">
+            <span class="jokbo-title">원 페어 (One Pair)</span>
+            <span>같은 숫자의 쌍이 1개</span>
+        </div>
+        <div class="jokbo-item">
+            <span class="jokbo-title">하이 카드 (High Card)</span>
+            <span>위의 족보에 해당하지 않는 경우 가장 높은 카드</span>
+        </div>
+    </div>
+
+    <script>
+        const socket = io('http://' + window.location.hostname + ':8092');
+        let myId = null;
+
+        socket.on('connect', () => {
+            console.log("Connected to server");
+            myId = socket.id;
+        });
+
+        socket.on('room_joined', (data) => {
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('game-room').style.display = 'block';
+            document.getElementById('current-room-id').innerText = data.room_id;
+            
+            if (data.host_id === socket.id) {
+                document.getElementById('start-btn').style.display = 'inline-block';
+                document.getElementById('next-btn').style.display = 'inline-block';
+            }
+        });
+
+        socket.on('error', (data) => {
+            alert(data.message);
+        });
+
+        socket.on('game_state', (data) => {
+            renderGame(data);
+        });
+
+        function createRoom() {
+            const name = document.getElementById('nickname').value;
+            if (!name) return alert("닉네임을 입력하세요");
+            socket.emit('create_room', {}, (response) => {
+                socket.emit('join_room', { room_id: response.room_id, name: name });
+            });
+        }
+
+        function joinRoom() {
+            const name = document.getElementById('nickname').value;
+            const roomId = document.getElementById('room-code').value;
+            if (!name || !roomId) return alert("닉네임과 방 코드를 입력하세요");
+            socket.emit('join_room', { room_id: roomId, name: name });
+        }
+
+        function startGame() {
+            socket.emit('start_game', {});
+        }
+
+        function nextPhase() {
+            socket.emit('next_phase', {});
+        }
+
+        function toggleJokbo() {
+            const m = document.getElementById('jokbo-modal');
+            const o = document.getElementById('overlay');
+            if (m.style.display === 'block') {
+                m.style.display = 'none';
+                o.style.display = 'none';
+            } else {
+                m.style.display = 'block';
+                o.style.display = 'block';
+            }
+        }
+
+        function renderCard(cardData) {
+            if (!cardData || cardData.rank === '?') return '<div class="card card-back"></div>';
+            
+            const isRed = cardData.suit === '♥' || cardData.suit === '♦';
+            return `<div class="card ${isRed ? 'red' : 'black'}">
+                <div>${cardData.rank}</div>
+                <div>${cardData.suit}</div>
+            </div>`;
+        }
+
+        function renderGame(data) {
+            document.getElementById('pot-amount').innerText = data.pot;
+            
+            // Community Cards
+            const ccDiv = document.getElementById('community-cards');
+            if (data.community_cards && data.community_cards.length > 0) {
+                ccDiv.innerHTML = data.community_cards.map(c => renderCard(c)).join('');
+            } else {
+                // 대기 중이거나 프리플롭 전일 때 빈 카드 슬롯 보여주기 (선택사항)
+                ccDiv.innerHTML = '<div style="color: #ccc; font-size: 14px;">Waiting for next round...</div>';
+            }
+
+            // Players
+            const pDiv = document.getElementById('players-area');
+            pDiv.innerHTML = '';
+            
+            // Re-order players so "I" am at the bottom (p1)
+            const myIndex = data.players.findIndex(p => p.id === socket.id);
+            let orderedPlayers = [];
+            if (myIndex !== -1) {
+                // Rotate array so myIndex becomes 0
+                orderedPlayers = [
+                    ...data.players.slice(myIndex),
+                    ...data.players.slice(0, myIndex)
+                ];
+            } else {
+                orderedPlayers = data.players;
+            }
+
+            orderedPlayers.forEach((p, index) => {
+                // Positions p1 through p8
+                const posClass = `p${index + 1}`;
+                const isMe = p.id === socket.id;
+                
+                // 핸드가 없으면(관전 중이면) 카드 안 보여줌
+                const handHtml = (p.hand && p.hand.length > 0 && p.hand[0].rank !== '?') 
+                    ? p.hand.map(c => renderCard(c)).join('')
+                    : (p.hand && p.hand.length > 0) 
+                        ? p.hand.map(c => renderCard(c)).join('') // 뒷면
+                        : '<div style="font-size:12px; color:#bdc3c7;">관전 중</div>';
+                
+                const playerHtml = `
+                    <div class="player ${posClass} ${isMe ? 'active' : ''} ${p.is_folded ? 'folded' : ''}">
+                        <div>${p.name}</div>
+                        <div>Chips: ${p.chips}</div>
+                        ${p.best_rank ? `<div style="color:#f1c40f; font-size:12px;">${p.best_rank}</div>` : ''}
+                        <div class="player-hand">
+                            ${handHtml}
+                        </div>
+                    </div>
+                `;
+                pDiv.innerHTML += playerHtml;
+            });
+
+            // Logs
+            const lDiv = document.getElementById('game-logs');
+            lDiv.innerHTML = data.logs.map(l => `<div>${l}</div>`).join('');
+            lDiv.scrollTop = lDiv.scrollHeight;
+        }
+    </script>
+</body>
+</html>
