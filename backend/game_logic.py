@@ -61,7 +61,7 @@ class GameState(Enum):
     SHOWDOWN = auto()
 
 class Player:
-    def __init__(self, player_id: str, name: str, chips: int = 1000):
+    def __init__(self, player_id: str, name: str, chips: int = 10000):
         self.player_id = player_id
         self.name = name
         self.chips = chips

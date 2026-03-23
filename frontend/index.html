@@ -11,11 +11,28 @@
         .container { max-width: 1400px; margin: 0 auto; }
 
         /* Lobby */
-        #lobby { text-align: center; margin-top: 100px; }
+        #lobby { text-align: center; margin-top: 40px; }
         input, button { padding: 10px; margin: 5px; font-size: 16px; border-radius: 5px; border: none; }
         button { background-color: #e74c3c; color: white; cursor: pointer; }
         button:hover { background-color: #c0392b; }
         input { color: #333; }
+
+        /* Room List */
+        .room-list-container { max-width: 600px; margin: 30px auto 0; text-align: left; }
+        .room-list-title { font-size: 18px; font-weight: bold; color: #f1c40f; margin-bottom: 10px; text-align: center; }
+        .room-list { max-height: 350px; overflow-y: auto; }
+        .room-item {
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(255,255,255,0.08); padding: 12px 16px; margin-bottom: 6px;
+            border-radius: 8px; cursor: pointer; transition: background 0.2s;
+        }
+        .room-item:hover { background: rgba(255,255,255,0.18); }
+        .room-item .room-name { font-weight: bold; font-size: 15px; }
+        .room-item .room-meta { font-size: 13px; color: #bdc3c7; }
+        .room-item .room-status { font-size: 12px; padding: 3px 8px; border-radius: 10px; }
+        .room-item .status-waiting { background: #27ae60; color: white; }
+        .room-item .status-playing { background: #e67e22; color: white; }
+        .no-rooms { text-align: center; color: #7f8c8d; padding: 30px; font-size: 14px; }
 
         /* Game Room */
         #game-room { display: none; }
@@ -110,7 +127,13 @@
         .btn-call { background-color: #2980b9 !important; }
         .btn-raise { background-color: #8e44ad !important; }
         .btn-allin { background-color: #e67e22 !important; }
-        #raise-amount { width: 80px; color: #333; font-size: 14px; padding: 8px; }
+        #raise-amount { width: 100px; color: #333; font-size: 14px; padding: 8px; text-align: center; }
+        .raise-group { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
+        .raise-group .btn-step {
+            background: #7f8c8d; color: white; font-size: 13px; padding: 8px 6px;
+            cursor: pointer; border: none; font-weight: bold; border-radius: 4px;
+        }
+        .raise-group .btn-step:hover { background: #95a5a6; }
 
         /* Log */
         .log-box {
@@ -191,8 +214,15 @@
     </div>
     <br>
     <div>
-        <input type="text" id="room-code" placeholder="방 코드 입력">
-        <button onclick="joinRoom()">참가하기</button>
+        <input type="text" id="room-code" placeholder="방 코드 입력 (직접 입력)">
+        <button onclick="joinRoom()">코드로 참가</button>
+    </div>
+
+    <div class="room-list-container">
+        <div class="room-list-title">🏠 현재 열린 방 목록 <button onclick="refreshRooms()" style="font-size:12px; padding:4px 10px; background:#3498db;">새로고침</button></div>
+        <div class="room-list" id="room-list">
+            <div class="no-rooms">아직 열린 방이 없습니다. 방을 만들어 보세요!</div>
+        </div>
     </div>
 </div>
 
@@ -219,7 +249,11 @@
                     <button class="btn-fold" onclick="doAction('fold')">폴드</button>
                     <button class="btn-check" id="btn-check" onclick="doAction('check')">체크</button>
                     <button class="btn-call" id="btn-call" onclick="doAction('call')">콜</button>
-                    <input id="raise-amount" type="number" min="1" placeholder="추가 베팅액">
+                    <span class="raise-group">
+                        <button class="btn-step" onclick="adjustRaise(-100)">-100</button>
+                        <input id="raise-amount" type="number" min="1" value="100">
+                        <button class="btn-step" onclick="adjustRaise(100)">+100</button>
+                    </span>
                     <button class="btn-raise" onclick="doAction('raise')">레이즈</button>
                     <button class="btn-allin" onclick="doAction('allin')">올인</button>
                 </div>
@@ -258,12 +292,17 @@
 </div>
 
 <script>
-    const socket = io('http://' + window.location.hostname + ':8094');
+    const socket = io('http://' + window.location.hostname + ':8095');
     let myId = null;
     let lastGameState = null;
 
     socket.on('connect', () => {
         myId = socket.id;
+        socket.emit('list_rooms');
+    });
+
+    socket.on('room_list', (rooms) => {
+        renderRoomList(rooms);
     });
 
     socket.on('room_joined', (data) => {
@@ -288,6 +327,37 @@
         appendChat(data.name, data.message);
     });
 
+    function renderRoomList(rooms) {
+        const container = document.getElementById('room-list');
+        if (!rooms || rooms.length === 0) {
+            container.innerHTML = '<div class="no-rooms">아직 열린 방이 없습니다. 방을 만들어 보세요!</div>';
+            return;
+        }
+        container.innerHTML = rooms.map(r => {
+            const isWaiting = r.state === 'WAITING';
+            const statusLabel = isWaiting ? '대기 중' : '게임 중 (관전 가능)';
+            const statusClass = isWaiting ? 'status-waiting' : 'status-playing';
+            return `
+                <div class="room-item" onclick="joinRoomById('${r.room_id}')">
+                    <div>
+                        <div class="room-name">🃏 ${escapeHtml(r.host_name)}의 방</div>
+                        <div class="room-meta">${r.room_id} · ${r.player_count}/${r.max_players}명</div>
+                    </div>
+                    <span class="room-status ${statusClass}">${statusLabel}</span>
+                </div>`;
+        }).join('');
+    }
+
+    function refreshRooms() {
+        socket.emit('list_rooms');
+    }
+
+    function joinRoomById(roomId) {
+        const name = document.getElementById('nickname').value.trim();
+        if (!name) return alert("먼저 닉네임을 입력해 주세요!");
+        socket.emit('join_room', { room_id: roomId, name: name });
+    }
+
     function createRoom() {
         const name = document.getElementById('nickname').value.trim();
         if (!name) return alert("닉네임을 입력하세요");
@@ -307,20 +377,31 @@
         socket.emit('start_game', {});
     }
 
+    function adjustRaise(delta) {
+        const input = document.getElementById('raise-amount');
+        let current = parseInt(input.value) || 0;
+        current = Math.max(100, current + delta);
+        if (lastGameState) {
+            const me = lastGameState.players.find(p => p.id === myId);
+            if (me) current = Math.min(current, me.chips);
+        }
+        input.value = current;
+    }
+
     function doAction(action) {
         const raiseInput = document.getElementById('raise-amount');
         let raise_to = 0;
 
         if (action === 'raise') {
             const addAmount = parseInt(raiseInput.value) || 0;
-            if (addAmount <= 0) return alert("추가 베팅액을 입력하세요.");
+            if (addAmount <= 0) return alert("베팅액을 입력하세요.");
             const me = lastGameState && lastGameState.players.find(p => p.id === myId);
             const myCurrentBet = me ? me.current_bet : 0;
             raise_to = myCurrentBet + addAmount;
         }
 
         socket.emit('player_action', { action: action, raise_to: raise_to });
-        raiseInput.value = '';
+        raiseInput.value = '100';
     }
 
     function sendMessage() {
@@ -445,8 +526,10 @@
                 btnCheck.style.opacity = '1';
             }
 
-            // 레이즈 입력 힌트: 현재 베팅 기준 추가 최소 금액
-            document.getElementById('raise-amount').placeholder = `추가 베팅액 (최소 ${data.big_blind})`;
+            const raiseInput = document.getElementById('raise-amount');
+            if (!raiseInput.value || parseInt(raiseInput.value) < data.big_blind) {
+                raiseInput.value = Math.max(100, data.big_blind);
+            }
         } else {
             betControls.style.display = 'none';
             if (data.state === 'WAITING') {

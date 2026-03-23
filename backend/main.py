@@ -39,9 +39,31 @@ player_to_room: Dict[str, str] = {}
 async def get_index():
     return FileResponse(os.path.join(FRONTEND_PATH, "index.html"))
 
+async def broadcast_room_list():
+    room_list = []
+    for rid, game in rooms.items():
+        room_list.append({
+            "room_id": rid,
+            "player_count": len(game.players),
+            "max_players": game.max_players,
+            "state": game.state.name,
+            "host_name": game.players[game.host_id].name if game.host_id and game.host_id in game.players else "???",
+        })
+    await sio.emit("room_list", room_list)
+
 @sio.event
 async def connect(sid, environ):
     logger.info(f"Client connected: {sid}")
+    room_list = []
+    for rid, game in rooms.items():
+        room_list.append({
+            "room_id": rid,
+            "player_count": len(game.players),
+            "max_players": game.max_players,
+            "state": game.state.name,
+            "host_name": game.players[game.host_id].name if game.host_id and game.host_id in game.players else "???",
+        })
+    await sio.emit("room_list", room_list, room=sid)
 
 @sio.event
 async def disconnect(sid):
@@ -50,22 +72,33 @@ async def disconnect(sid):
         if room_id in rooms:
             game = rooms[room_id]
             was_current = game.get_current_player_id() == sid
+            player_name = game.players[sid].name if sid in game.players else "???"
             game.remove_player(sid)
-
-            # 게임 진행 중 연결 끊긴 플레이어의 턴이었다면 자동으로 폴드 처리
-            if was_current and game.state not in (GameState.WAITING, GameState.SHOWDOWN):
-                _maybe_advance(room_id)
-            else:
-                await broadcast_game_state(room_id)
 
             if not game.players:
                 del rooms[room_id]
+            else:
+                game.logs.append(f"[{player_name}]님이 퇴장했습니다.")
+                if was_current and game.state not in (GameState.WAITING, GameState.SHOWDOWN):
+                    await _check_and_advance(room_id)
+                else:
+                    await broadcast_game_state(room_id)
         del player_to_room[sid]
+    await broadcast_room_list()
     logger.info(f"Client disconnected: {sid}")
 
-def _maybe_advance(room_id: str):
-    """배팅이 끝났는지 확인하고 자동으로 다음 단계로 이동 (동기 헬퍼)"""
-    pass  # 비동기 처리는 아래 async 버전 사용
+@sio.event
+async def list_rooms(sid):
+    room_list = []
+    for rid, game in rooms.items():
+        room_list.append({
+            "room_id": rid,
+            "player_count": len(game.players),
+            "max_players": game.max_players,
+            "state": game.state.name,
+            "host_name": game.players[game.host_id].name if game.host_id and game.host_id in game.players else "???",
+        })
+    await sio.emit("room_list", room_list, room=sid)
 
 async def _check_and_advance(room_id: str):
     if room_id not in rooms:
@@ -88,6 +121,7 @@ async def create_room(sid, data):
         room_id = f"room_{random.randint(1000, 9999)}"
     rooms[room_id] = PokerGame(room_id)
     rooms[room_id].host_id = sid
+    await broadcast_room_list()
     return {"room_id": room_id}
 
 @sio.event
@@ -95,26 +129,27 @@ async def join_room(sid, data):
     room_id = data.get("room_id")
     player_name = data.get("name", f"Player_{sid[:4]}")
 
-    if room_id in rooms:
-        game = rooms[room_id]
-        if len(game.players) >= game.max_players:
-            await sio.emit("error", {"message": "방이 가득 찼습니다."}, room=sid)
-            return
-
-        game.add_player(sid, player_name)
-        player_to_room[sid] = room_id
-        await sio.enter_room(sid, room_id)
-        await sio.emit("room_joined", {"room_id": room_id, "host_id": game.host_id}, room=sid)
-
-        join_msg = f"[{player_name}]님이 입장했습니다."
-        if game.state != GameState.WAITING:
-            join_msg += " (다음 판부터 참여)"
-            await sio.emit("error", {"message": "게임이 진행 중입니다. 관전 모드로 입장합니다."}, room=sid)
-
-        game.logs.append(join_msg)
-        await broadcast_game_state(room_id)
-    else:
+    if room_id not in rooms:
         await sio.emit("error", {"message": "존재하지 않는 방입니다."}, room=sid)
+        return
+
+    game = rooms[room_id]
+    if len(game.players) >= game.max_players:
+        await sio.emit("error", {"message": "방이 가득 찼습니다. (최대 8명)"}, room=sid)
+        return
+
+    game.add_player(sid, player_name)
+    player_to_room[sid] = room_id
+    await sio.enter_room(sid, room_id)
+    await sio.emit("room_joined", {"room_id": room_id, "host_id": game.host_id}, room=sid)
+
+    join_msg = f"[{player_name}]님이 입장했습니다."
+    if game.state != GameState.WAITING:
+        join_msg += " (다음 판부터 참여)"
+
+    game.logs.append(join_msg)
+    await broadcast_game_state(room_id)
+    await broadcast_room_list()
 
 @sio.event
 async def start_game(sid, data):
@@ -196,13 +231,21 @@ async def broadcast_game_state(room_id):
         "big_blind": game.big_blind,
     }
 
+    active_not_folded = [p for p in game.players.values() if not p.is_folded]
+    non_allin_active = [p for p in active_not_folded if not p.is_all_in]
+    allin_showdown = len(active_not_folded) >= 2 and len(non_allin_active) <= 1 and game.state not in (GameState.WAITING,)
+
     for sid in game.players.keys():
         players_data = []
         for pid, p in game.players.items():
-            show_hand = (pid == sid) or (game.state == GameState.SHOWDOWN and not p.is_folded)
+            show_hand = (
+                (pid == sid)
+                or (game.state == GameState.SHOWDOWN and not p.is_folded)
+                or (allin_showdown and not p.is_folded)
+            )
             players_data.append(p.to_dict(show_hand=show_hand))
 
         await sio.emit("game_state", {**common_state, "players": players_data}, room=sid)
 
 if __name__ == "__main__":
-    uvicorn.run(socket_app, host="0.0.0.0", port=8094)
+    uvicorn.run(socket_app, host="0.0.0.0", port=8095)
