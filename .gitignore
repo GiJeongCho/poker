@@ -10,7 +10,7 @@ build/
 dist/
 *.egg-info/
 
-*/nohup.out
+nohup.out
 
 # Node.js
 node_modules/
