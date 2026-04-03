@@ -444,7 +444,7 @@ class PokerGame:
             winner.chips += self.pot
             self.logs.append(f"승자: {winner.name} (나머지 모두 폴드, +{self.pot}칩)")
             self.state = GameState.WAITING
-            self.dealer_index = (self.dealer_index + 1) % max(1, len(self._active_players()))
+            self.dealer_index = (self.dealer_index + 1) % max(1, len(self.players))
             return
 
         for p in active_players:
@@ -467,4 +467,4 @@ class PokerGame:
 
         self.logs.append(f"승자: {winner_names} ({winners[0].best_hand_rank.name if winners else 'None'}, +{win_amount}칩)")
         self.state = GameState.WAITING
-        self.dealer_index = (self.dealer_index + 1) % max(1, len(list(self.players.values())))
+        self.dealer_index = (self.dealer_index + 1) % max(1, len(self.players))

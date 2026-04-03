@@ -235,6 +235,13 @@ async def broadcast_game_state(room_id):
     non_allin_active = [p for p in active_not_folded if not p.is_all_in]
     allin_showdown = len(active_not_folded) >= 2 and len(non_allin_active) <= 1 and game.state not in (GameState.WAITING,)
 
+    hand_rank_names = {
+        "HIGH_CARD": "하이 카드", "ONE_PAIR": "원 페어", "TWO_PAIR": "투 페어",
+        "THREE_OF_A_KIND": "트리플", "STRAIGHT": "스트레이트", "FLUSH": "플러쉬",
+        "FULL_HOUSE": "풀 하우스", "FOUR_OF_A_KIND": "포카드",
+        "STRAIGHT_FLUSH": "스트레이트 플러쉬", "ROYAL_FLUSH": "로얄 플러쉬",
+    }
+
     for sid in game.players.keys():
         players_data = []
         for pid, p in game.players.items():
@@ -243,7 +250,13 @@ async def broadcast_game_state(room_id):
                 or (game.state == GameState.SHOWDOWN and not p.is_folded)
                 or (allin_showdown and not p.is_folded)
             )
-            players_data.append(p.to_dict(show_hand=show_hand))
+            pd = p.to_dict(show_hand=show_hand)
+
+            if pid == sid and p.hand and not p.is_folded and game.state not in (GameState.WAITING,):
+                rank_enum, _ = game.evaluate_hand(p)
+                pd["my_hand_rank"] = hand_rank_names.get(rank_enum.name, rank_enum.name)
+
+            players_data.append(pd)
 
         await sio.emit("game_state", {**common_state, "players": players_data}, room=sid)
 

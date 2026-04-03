@@ -202,20 +202,93 @@
         .jokbo-item { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #7f8c8d; }
         .jokbo-title { font-weight: bold; color: #f1c40f; }
         .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 999; }
+
+        /* 내 족보 표시 */
+        .my-hand-rank {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+            color: #000; font-weight: bold; font-size: 12px;
+            padding: 3px 10px; border-radius: 12px; margin-top: 4px;
+            display: inline-block; text-shadow: 0 1px 0 rgba(255,255,255,0.3);
+        }
+
+        /* 액션 뱃지 (플레이어 위에 떠오르는 액션 표시) */
+        .action-badge {
+            position: absolute; top: -30px; left: 50%; transform: translateX(-50%);
+            font-size: 13px; font-weight: bold; padding: 3px 10px; border-radius: 15px;
+            white-space: nowrap; pointer-events: none; z-index: 10;
+            animation: badgePop 1.8s ease-out forwards;
+        }
+        .action-badge.fold { background: #c0392b; color: #fff; }
+        .action-badge.check { background: #27ae60; color: #fff; }
+        .action-badge.call { background: #2980b9; color: #fff; }
+        .action-badge.raise { background: #8e44ad; color: #fff; }
+        .action-badge.allin { background: #e67e22; color: #fff; font-size: 15px; animation: badgeAllin 2s ease-out forwards; }
+        @keyframes badgePop {
+            0% { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.5); }
+            15% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.1); }
+            30% { transform: translateX(-50%) translateY(0) scale(1); }
+            80% { opacity: 1; }
+            100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+        }
+        @keyframes badgeAllin {
+            0% { opacity: 0; transform: translateX(-50%) scale(0.3); }
+            15% { opacity: 1; transform: translateX(-50%) scale(1.3); }
+            25% { transform: translateX(-50%) scale(1); }
+            80% { opacity: 1; }
+            100% { opacity: 0; transform: translateX(-50%) translateY(-25px); }
+        }
+
+        /* 칩 뿌리기 애니메이션 */
+        .chip-fly {
+            position: absolute; font-size: 20px; pointer-events: none; z-index: 20;
+            animation: chipToPot 0.6s ease-in forwards;
+        }
+        @keyframes chipToPot {
+            0% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; top: 40%; left: 50%; transform: scale(0.3); }
+        }
+
+        /* 게임 시작 중앙 텍스트 */
+        .game-start-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; justify-content: center; align-items: center;
+            z-index: 50; pointer-events: none;
+        }
+        .game-start-text {
+            font-size: 52px; font-weight: 900; color: #f1c40f;
+            text-shadow: 0 0 30px rgba(241,196,15,0.7), 0 4px 10px rgba(0,0,0,0.6);
+            animation: gameStartAnim 2.5s ease-out forwards;
+            letter-spacing: 6px;
+        }
+        @keyframes gameStartAnim {
+            0% { opacity: 0; transform: scale(0.3) rotate(-5deg); }
+            20% { opacity: 1; transform: scale(1.15) rotate(1deg); }
+            35% { transform: scale(1) rotate(0); }
+            75% { opacity: 1; }
+            100% { opacity: 0; transform: scale(1.1) translateY(-30px); }
+        }
+
+        /* 로비 개선 */
+        .lobby-nickname-box { margin-bottom: 20px; }
+        .lobby-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 400px; margin: 0 auto 20px; }
+        .lobby-actions button { width: 100%; font-size: 18px; padding: 14px; }
+        .lobby-join-row { display: flex; gap: 8px; width: 100%; }
+        .lobby-join-row input { flex: 1; }
     </style>
 </head>
 <body>
 
 <div class="container" id="lobby">
     <h1>♠️ 8인 포커 (텍사스 홀덤)</h1>
-    <div>
-        <input type="text" id="nickname" placeholder="닉네임 입력">
-        <button onclick="createRoom()">방 만들기</button>
+    <div class="lobby-nickname-box">
+        <input type="text" id="nickname" placeholder="닉네임 입력" style="font-size:18px; padding:12px 16px; width:280px;">
     </div>
-    <br>
-    <div>
-        <input type="text" id="room-code" placeholder="방 코드 입력 (직접 입력)">
-        <button onclick="joinRoom()">코드로 참가</button>
+    <div class="lobby-actions">
+        <button onclick="createRoom()" style="background:#e74c3c; font-weight:bold;">🃏 방 만들기</button>
+        <div class="lobby-join-row">
+            <input type="text" id="room-code" placeholder="방 코드 입력">
+            <button onclick="joinRoom()" style="white-space:nowrap;">참가</button>
+        </div>
     </div>
 
     <div class="room-list-container">
@@ -246,16 +319,16 @@
 
             <div class="controls">
                 <div id="bet-controls">
-                    <button class="btn-fold" onclick="doAction('fold')">폴드</button>
-                    <button class="btn-check" id="btn-check" onclick="doAction('check')">체크</button>
-                    <button class="btn-call" id="btn-call" onclick="doAction('call')">콜</button>
+                    <button class="btn-fold" onclick="doAction('fold')">🚫 폴드</button>
+                    <button class="btn-check" id="btn-check" onclick="doAction('check')">✅ 체크</button>
+                    <button class="btn-call" id="btn-call" onclick="doAction('call')">📞 콜</button>
                     <span class="raise-group">
                         <button class="btn-step" onclick="adjustRaise(-100)">-100</button>
                         <input id="raise-amount" type="number" min="1" value="100">
                         <button class="btn-step" onclick="adjustRaise(100)">+100</button>
                     </span>
-                    <button class="btn-raise" onclick="doAction('raise')">레이즈</button>
-                    <button class="btn-allin" onclick="doAction('allin')">올인</button>
+                    <button class="btn-raise" onclick="doAction('raise')">⬆️ 레이즈</button>
+                    <button class="btn-allin" onclick="doAction('allin')">🔥 올인</button>
                 </div>
                 <div id="waiting-msg" style="color:#bdc3c7; font-size:14px;"></div>
             </div>
@@ -295,6 +368,8 @@
     const socket = io('http://' + window.location.hostname + ':8095');
     let myId = null;
     let lastGameState = null;
+    let prevState = null;
+    let prevPlayerActions = {};
 
     socket.on('connect', () => {
         myId = socket.id;
@@ -450,10 +525,56 @@
         return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
-    function renderGame(data) {
-        document.getElementById('pot-amount').innerText = data.pot;
+    function detectAction(logs) {
+        if (!logs || logs.length === 0) return {};
+        const last = logs[logs.length - 1];
+        const actions = {};
+        const patterns = [
+            { regex: /\[?(.+?)\]?님이 폴드했습니다/, type: 'fold', icon: '🚫 폴드' },
+            { regex: /\[?(.+?)\]?님이 체크했습니다/, type: 'check', icon: '✅ 체크' },
+            { regex: /\[?(.+?)\]?님이 콜했습니다/, type: 'call', icon: '📞 콜' },
+            { regex: /\[?(.+?)\]?님이 올인\(콜\)했습니다/, type: 'allin', icon: '🔥 ALL IN' },
+            { regex: /\[?(.+?)\]?님이 레이즈했습니다/, type: 'raise', icon: '⬆️ 레이즈' },
+            { regex: /\[?(.+?)\]?님이 올인했습니다/, type: 'allin', icon: '🔥 ALL IN' },
+        ];
+        for (const p of patterns) {
+            const m = last.match(p.regex);
+            if (m) { actions[m[1]] = { type: p.type, icon: p.icon }; break; }
+        }
+        return actions;
+    }
 
-        // Community Cards
+    function showGameStartOverlay() {
+        const table = document.querySelector('.poker-table');
+        if (!table) return;
+        const existing = table.querySelector('.game-start-overlay');
+        if (existing) existing.remove();
+        const overlay = document.createElement('div');
+        overlay.className = 'game-start-overlay';
+        overlay.innerHTML = '<div class="game-start-text">GAME START</div>';
+        table.appendChild(overlay);
+        setTimeout(() => overlay.remove(), 3000);
+    }
+
+    function showChipFly(playerEl) {
+        if (!playerEl) return;
+        const chip = document.createElement('div');
+        chip.className = 'chip-fly';
+        chip.textContent = '🪙';
+        chip.style.top = playerEl.style.top || '50%';
+        chip.style.left = playerEl.style.left || '50%';
+        playerEl.parentElement.appendChild(chip);
+        setTimeout(() => chip.remove(), 700);
+    }
+
+    function renderGame(data) {
+        if (prevState && prevState === 'WAITING' && data.state === 'PREFLOP') {
+            showGameStartOverlay();
+        }
+        prevState = data.state;
+
+        document.getElementById('pot-amount').innerText = data.pot.toLocaleString();
+
         const ccDiv = document.getElementById('community-cards');
         if (data.community_cards && data.community_cards.length > 0) {
             ccDiv.innerHTML = data.community_cards.map(c => renderCard(c)).join('');
@@ -461,7 +582,8 @@
             ccDiv.innerHTML = '<div style="color:#ccc; font-size:13px;">대기 중...</div>';
         }
 
-        // Players — 자신을 p1으로 회전
+        const currentActions = detectAction(data.logs);
+
         const pDiv = document.getElementById('players-area');
         pDiv.innerHTML = '';
         const myIndex = data.players.findIndex(p => p.id === myId);
@@ -483,18 +605,31 @@
                 : '<div style="font-size:11px; color:#bdc3c7;">관전 중</div>';
 
             const betHtml = (p.current_bet > 0 && data.state !== 'WAITING' && data.state !== 'SHOWDOWN')
-                ? `<div class="player-bet">배팅: ${p.current_bet}</div>` : '';
+                ? `<div class="player-bet">🪙 ${p.current_bet.toLocaleString()}</div>` : '';
 
             const rankHtml = p.best_rank
                 ? `<div style="color:#f1c40f; font-size:11px;">${p.best_rank.replace(/_/g,' ')}</div>` : '';
 
+            const myRankHtml = (isMe && p.my_hand_rank)
+                ? `<div class="my-hand-rank">${p.my_hand_rank}</div>` : '';
+
+            const action = currentActions[p.name];
+            const badgeHtml = action
+                ? `<div class="action-badge ${action.type}">${action.icon}</div>` : '';
+
+            const allinBadge = (p.is_all_in && !p.is_folded && data.state !== 'WAITING' && data.state !== 'SHOWDOWN')
+                ? `<div style="color:#e67e22; font-size:10px; font-weight:bold; margin-top:2px;">🔥 ALL-IN</div>` : '';
+
             pDiv.innerHTML += `
                 <div class="player ${posClass} ${turnClass}">
+                    ${badgeHtml}
                     <div style="font-size:13px;">${isCurrentTurn ? '▶ ' : ''}${escapeHtml(p.name)}</div>
-                    <div style="font-size:12px;">칩: ${p.chips}</div>
+                    <div style="font-size:12px;">💰 ${p.chips.toLocaleString()}</div>
                     ${betHtml}
+                    ${allinBadge}
                     ${rankHtml}
                     <div class="player-hand">${handHtml}</div>
+                    ${myRankHtml}
                 </div>`;
         });
 
@@ -516,6 +651,7 @@
             if (callDiff > 0) {
                 btnCall.textContent = `콜 (${callDiff}칩)`;
                 btnCall.disabled = false;
+                btnCall.style.opacity = '1';
                 btnCheck.disabled = true;
                 btnCheck.style.opacity = '0.4';
             } else {
