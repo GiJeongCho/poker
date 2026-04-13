@@ -261,4 +261,4 @@ async def broadcast_game_state(room_id):
         await sio.emit("game_state", {**common_state, "players": players_data}, room=sid)
 
 if __name__ == "__main__":
-    uvicorn.run(socket_app, host="0.0.0.0", port=8095)
+    uvicorn.run(socket_app, host="0.0.0.0", port=4996)
