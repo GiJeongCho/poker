@@ -466,5 +466,4 @@ class PokerGame:
             w.chips += win_amount
 
         self.logs.append(f"승자: {winner_names} ({winners[0].best_hand_rank.name if winners else 'None'}, +{win_amount}칩)")
-        self.state = GameState.WAITING
         self.dealer_index = (self.dealer_index + 1) % max(1, len(self.players))

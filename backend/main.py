@@ -252,9 +252,10 @@ async def broadcast_game_state(room_id):
             )
             pd = p.to_dict(show_hand=show_hand)
 
-            if pid == sid and p.hand and not p.is_folded and game.state not in (GameState.WAITING,):
-                rank_enum, _ = game.evaluate_hand(p)
-                pd["my_hand_rank"] = hand_rank_names.get(rank_enum.name, rank_enum.name)
+            if p.hand and not p.is_folded and game.state not in (GameState.WAITING,):
+                if pid == sid or game.state == GameState.SHOWDOWN or allin_showdown:
+                    rank_enum, _ = game.evaluate_hand(p)
+                    pd["my_hand_rank"] = hand_rank_names.get(rank_enum.name, rank_enum.name)
 
             players_data.append(pd)
 

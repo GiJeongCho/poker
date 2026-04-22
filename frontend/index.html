@@ -568,7 +568,7 @@
     }
 
     function renderGame(data) {
-        if (prevState && prevState === 'WAITING' && data.state === 'PREFLOP') {
+        if (prevState && (prevState === 'WAITING' || prevState === 'SHOWDOWN') && data.state === 'PREFLOP') {
             showGameStartOverlay();
         }
         prevState = data.state;
@@ -610,7 +610,7 @@
             const rankHtml = p.best_rank
                 ? `<div style="color:#f1c40f; font-size:11px;">${p.best_rank.replace(/_/g,' ')}</div>` : '';
 
-            const myRankHtml = (isMe && p.my_hand_rank)
+            const myRankHtml = p.my_hand_rank
                 ? `<div class="my-hand-rank">${p.my_hand_rank}</div>` : '';
 
             const action = currentActions[p.name];
@@ -668,8 +668,12 @@
             }
         } else {
             betControls.style.display = 'none';
+            waitingMsg.style.color = '#bdc3c7';
             if (data.state === 'WAITING') {
                 waitingMsg.textContent = '';
+            } else if (data.state === 'SHOWDOWN') {
+                waitingMsg.textContent = '🃏 쇼다운! 모든 카드가 공개되었습니다.';
+                waitingMsg.style.color = '#f1c40f';
             } else if (data.current_player_id) {
                 const cur = data.players.find(p => p.id === data.current_player_id);
                 waitingMsg.textContent = cur ? `${cur.name}님의 차례...` : '';
